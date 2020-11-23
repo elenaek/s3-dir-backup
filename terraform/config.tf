@@ -15,3 +15,6 @@ resource "aws_ssm_parameter" "dirBackupBucketNameSsmParam" {
     value = var.backupBucketName
     tags = var.stackTags
 }
+output "dirBackupSsmParamPath" {
+    value = aws_ssm_parameter.dirBackupBucketNameSsmParam.name
+}
