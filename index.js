@@ -15,6 +15,9 @@ const {
     archiveDir,
     cleanUpPostUpload
 } = require('./lib/utils');
+const{
+    sendSMTPNotification
+} = require('./lib/mail');
 
 // daily backup of a fs directory to an existing s3 bucket --x
 // backup time and date must appear in the backup file name --x
@@ -32,6 +35,11 @@ const backupDirectory = async (backupDir, bucketName) => {
         let { s3BucketKey } = await uploadFileToS3(bucketName);
         await confirmBackupUploadedToS3(bucketName, s3BucketKey, backupFilePath);
         await cleanUpPostUpload(backupFilePath);
+        await sendSMTPNotification(
+            process.env.SMTP_RECEIVERS, 
+            `[${new Date().toISOString()}]MPTH_Backup_Success_Notification`, 
+            `${backupDir} has been successfully backed up to the ${bucketName} S3 bucket!`
+        );
     }catch(err){
         console.log(err);
     }
@@ -56,6 +64,39 @@ cli
                     default: false
                 }
             ]);
+
+            if(!process.env.SMTP_USER || !process.env.SMTP_PW){
+                let { setSmtp } = await prompt([
+                    {
+                        type: "confirm",
+                        name: "setSmtp",
+                        message: `Detected unset email env variables: "SMTP_USER", "SMTP_PW" and/or "SMTP_RECEIVERS". Would you like to set temporary values?`
+                    }
+                ]);
+                if(setSmtp){
+                    let { smtpUser, smtpPassword, smtpReceivers } = await prompt([
+                        {
+                            type: "input",
+                            name: "smtpUser",
+                            message: "SMTP User/Email address: "
+                        },
+                        {
+                            type: "password",
+                            name: "smtpPassword",
+                            message: "SMTP Password: "
+                        },
+                        {
+                            type: "input",
+                            name: "smtpReceivers",
+                            message: "Comma separated list of email notification receivers"
+                        }
+                    ]);
+                    process.env.SMTP_USER = smtpUser;
+                    process.env.SMTP_PW = smtpPassword;
+                    process.env.SMTP_RECEIVERS = smtpReceivers.split(",").map((receiver) => receiver.replace(/\s/gi,"")) || [];
+                    console.log(process.env.SMTP_RECEIVERS)
+                }
+            }
             
             if(confirmed){
                 await backupDirectory(srcBackupDir, destS3BucketName);
