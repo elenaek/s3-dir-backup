@@ -2,11 +2,16 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
+const process = require('process');
 
 const cli = require('commander');
+const { prompt } = require("inquirer");
 const AWS = require('aws-sdk');
 const archiver = require('archiver');
+const schedule = require('node-schedule');
 const winston = require('winston');
+const inquirer = require('inquirer');
+const { query } = require('winston');
 require('winston-daily-rotate-file');
 
 AWS.config.update({
@@ -21,6 +26,11 @@ const ssm = new AWS.SSM({apiVersion: '2014-11-06'});
 const s3 = new AWS.S3({
     apiVersion: '2006-03-01'
 });
+const iam = new AWS.IAM({
+    apiVersion: '2010-05-08'
+});
+
+inquirer.registerPrompt('directory', require('inquirer-select-directory'));
 
 const rotateFileTransport = new winston.transports.DailyRotateFile({
     filename: `${path.join(os.homedir(), "mpth-backup", "backup-%DATE%.json")}`,
@@ -45,11 +55,11 @@ const logger = winston.createLogger({
 })
 
 // daily backup of a fs directory to an existing s3 bucket
-// backup time and date must appear in the backup file name
+// backup time and date must appear in the backup file name --x
 // backup script should run once per day automatically
 // purge backups older than 7 days --x
 // monitor job status and confirm archive file exists in s3 and email a status message at the end of the script run
-// script must log to syslog or a dedicated logfile
+// script must log to syslog or a dedicated logfile --?
 
 
 // Put folder path into a zip file
@@ -60,7 +70,7 @@ const archiveDir = (dirToBackup = "sometestfolder") => {
             let archiveFilePath =  `${dirToBackup}.zip`;
             let outputFileStream = fs.createWriteStream(archiveFilePath);
             let dirArchive = archiver('zip', {zlib: {level: 9}});
-            outputFileStream.on("close", () => resolve())
+            outputFileStream.on("close", () => resolve(archiveFilePath))
             dirArchive.on("warning", (warning) => {
                 if(warning.code === "ENOENT") logger.warn(warning);
                 else {
@@ -189,17 +199,119 @@ const cleanUpPostUpload = async (backupFilePath) => {
     if(fs.existsSync(backupFilePath)) fs.unlinkSync(backupFilePath);
 }
 
-
-(async() => {
+// check if bucket exists
+const bucketExists = async (bucketName) => {
     try{
-        let bucketName = await getBackupBucketName();
-        await archiveDir("sometestfolder");
+        if(bucketName){
+            let s3HeadParams = {
+                Bucket: bucketName
+            };
+            await s3.headBucket(s3HeadParams).promise();
+            return true;
+        }
+    } catch(err){
+        if(err.statusCode === 404){
+            return false;
+        }
+        else{
+            throw err;
+        }
+    }
+}
+
+// Create S3 Bucket if doesn't exist
+const createS3Bucket = async (bucketName) => {
+    try{
+        if(bucketName && !await bucketExists(bucketName)){
+            let s3BucketCreateParams = {
+                Bucket: bucketName,
+                ACL: "private"
+            };
+            let s3BucketPutLifecycleParams = {
+                Bucket: bucketName,
+                LifecycleConfiguration: {
+                    Rules:[
+                        {
+                            Prefix: "",
+                            Expiration: {
+                                Days: 7
+                            },
+                            ID: "ExpireObjectsIn7Days",
+                            Status: "Enabled"
+                        }
+                    ]
+                }
+            };
+            console.log(s3BucketCreateParams);
+            await s3.createBucket(s3BucketCreateParams).promise();
+            await s3.putBucketLifecycle(s3BucketPutLifecycleParams).promise();
+        }
+    } catch(err){
+        throw err;
+    }
+}
+
+// Get current IAM user
+const getCurrentIamUser = async () => {
+    try{
+        return await (await iam.getUser().promise()).User.UserName;
+    }catch(err){
+        throw err;
+    }
+}
+
+//main backup function
+const backupDirectory = async (backupDir, bucketName) => {
+    try{
+        await createS3Bucket(bucketName);
+        let backupFilePath = await archiveDir(backupDir);
         let { s3BucketKey } = await uploadFileToS3(bucketName);
-
-        console.log(await confirmBackupUploaded(bucketName, s3BucketKey, "sometestfolder.zip"));
-        await cleanUpPostUpload("sometestfolder.zip");
-
+        await confirmBackupUploaded(bucketName, s3BucketKey, backupFilePath);
+        await cleanUpPostUpload(backupFilePath);
     }catch(err){
         console.log(err);
     }
-})();
+}
+
+
+cli
+    .version("0.0.1")
+    .description("CLI tool for mpth assignment. Backs up specified src directory to destination bucket")
+    .option("-s, --src-backup-dir <backupDir>", "Source directory to back up to S3 bucket (required)")
+    .option("-d, --dest-s3-bucket-name <s3BucketName>", "Name of target S3 bucket to back up to. Will create if doesn't currently exist (required)")
+    .action(async () => {
+        let { destS3BucketName, srcBackupDir } = cli;
+        if(srcBackupDir && destS3BucketName){
+            destS3BucketName = destS3BucketName.toLowerCase();
+
+            let { confirmed } = await prompt([
+                {
+                    type: "confirm",
+                    name: "confirmed",
+                    message: `If the S3 bucket (${destS3BucketName}) doesn't exist it will be created using your current user (${await getCurrentIamUser()})`,
+                    default: false
+                }
+            ]);
+            
+            if(confirmed){
+                await backupDirectory(srcBackupDir, destS3BucketName);
+                schedule.scheduleJob("0 0 * * *", async () => {
+                    await backupDirectory(srcBackupDir, destS3BucketName);
+                });
+            }
+        }
+        else{
+            console.log("Please specify a value for both --dest-s3-bucket-name and --src-backup-dir!")
+        }
+    })
+    .parse(process.argv);
+    
+cli.on('command:*', () => {
+        cli.outputHelp();
+        return
+    });
+
+if(!process.argv.slice(2).length){
+    cli.outputHelp();
+    return
+}

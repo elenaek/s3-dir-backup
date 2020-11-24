@@ -7,11 +7,15 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
+  "preferGlobal": true,
+  "bin": "./index.js",
   "license": "ISC",
   "dependencies": {
     "archiver": "^5.1.0",
     "aws-sdk": "^2.797.0",
     "commander": "^6.2.0",
+    "inquirer": "^7.3.3",
+    "inquirer-select-directory": "^1.2.0",
     "node-schedule": "^1.3.2",
     "nodemailer": "^6.4.16",
     "winston": "^3.3.3",
