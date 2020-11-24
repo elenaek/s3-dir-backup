@@ -21,11 +21,17 @@ const s3 = new AWS.S3({
 });
 
 const logger = winston.createLogger({
-    level: "info",
-    format: winston.format.json(),
+    levels: {
+        success: 1,
+        error: 2,
+        info: 3
+    },
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
     transports: [
         new winston.transports.Console(),
-        new winston.transports.File({filename: "backup-err.log", level: "error"}),
         new winston.transports.File({filename: "backup.log"})
     ]
 })
@@ -61,7 +67,7 @@ const archiveDir = (dirToBackup = "sometestfolder") => {
             dirArchive.directory(dirToBackup);
             dirArchive.pipe(outputFileStream);
             dirArchive.finalize();
-            logger.info(`${dirToBackup} has successfully been archived in ${dirToBackup}.zip`);
+            logger.success(`${dirToBackup} has successfully been archived in ${dirToBackup}.zip`);
         }
         else{
             logger.error(`The directory ${dirToBackup} doesn't exist!`);
@@ -105,6 +111,7 @@ const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
                 }
                 logger.info(`${fileName} was successfully uploaded!`)
                 let s3Uri = `S3://${data.Bucket}/${data.Key}`;
+                console.log(data);
                 return resolve({s3Uri, s3BucketName: data.Bucket, s3BucketKey: data.Key});
             })
         }
@@ -125,11 +132,11 @@ const formatBackupName = async (backupFilePath) => {
     }
 }
 
-// Get sha256 hash of backup file
+// Get md5 hash of backup file
 const getHash = (backupFilePath) => {
     return new Promise((resolve, reject) => {
         if(fs.existsSync(backupFilePath)){
-            let shaHash = crypto.createHash("sha256");
+            let shaHash = crypto.createHash("md5");
             let fileStream = fs.createReadStream(backupFilePath);
             fileStream.on("error", (err) => reject(err));
             fileStream.on("data", (chunk) => shaHash.update(chunk));
@@ -145,14 +152,20 @@ const getHash = (backupFilePath) => {
 const confirmBackupUploaded = async (bucketName, bucketKey, backupFilePath) => {
     if(bucketName && bucketKey && fs.existsSync(backupFilePath)){
         let backupSizeInBytes = fs.statSync(backupFilePath).size;
+        let backupHash = await getHash(backupFilePath);
         let headParams = {
             Bucket: bucketName,
             Key: bucketKey
         }
         try{
             let res = await s3.headObject(headParams).promise();
+            let s3Hash = res.ETag.replace(/"/gi, "");
             console.log(`${backupSizeInBytes} : ${res.ContentLength}`);
-            if(backupSizeInBytes === res.ContentLength) return true;
+            console.log(`${backupHash} : ${s3Hash}`);
+            if(
+                backupSizeInBytes === res.ContentLength &&
+                backupHash === s3Hash
+                ) return true;
             return false;
         }catch(err){
             return false;
@@ -170,17 +183,14 @@ const cleanUpPostUpload = async (backupFilePath) => {
 
 
 (async() => {
-    // console.log(await getBackupBucketName());
     try{
         let bucketName = await getBackupBucketName();
         await archiveDir("sometestfolder");
         let { s3BucketKey } = await uploadFileToS3(bucketName);
-        // console.log(await getHash("sometestfolder.zip"))
 
         console.log(await confirmBackupUploaded(bucketName, s3BucketKey, "sometestfolder.zip"));
         await cleanUpPostUpload("sometestfolder.zip");
 
-        // console.log(formatBackupName("sometestfolder.zip"));
     }catch(err){
         console.log(err);
     }
