@@ -11,7 +11,6 @@ const archiver = require('archiver');
 const schedule = require('node-schedule');
 const winston = require('winston');
 const inquirer = require('inquirer');
-const { query } = require('winston');
 require('winston-daily-rotate-file');
 
 AWS.config.update({
@@ -54,12 +53,12 @@ const logger = winston.createLogger({
     ]
 })
 
-// daily backup of a fs directory to an existing s3 bucket
+// daily backup of a fs directory to an existing s3 bucket --x
 // backup time and date must appear in the backup file name --x
-// backup script should run once per day automatically
+// backup script should run once per day automatically --x
 // purge backups older than 7 days --x
 // monitor job status and confirm archive file exists in s3 and email a status message at the end of the script run
-// script must log to syslog or a dedicated logfile --?
+// script must log to syslog or a dedicated logfile --x
 
 
 // Put folder path into a zip file
