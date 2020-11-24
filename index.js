@@ -1,11 +1,13 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
 
+const cli = require('commander');
 const AWS = require('aws-sdk');
 const archiver = require('archiver');
 const winston = require('winston');
-const cli = require('commander');
+require('winston-daily-rotate-file');
 
 AWS.config.update({
     region: "us-east-1",
@@ -20,11 +22,17 @@ const s3 = new AWS.S3({
     apiVersion: '2006-03-01'
 });
 
+const rotateFileTransport = new winston.transports.DailyRotateFile({
+    filename: `${path.join(os.homedir(), "mpth-backup", "backup-%DATE%.json")}`,
+    maxSize: "10mb",
+    maxFiles: "30d"
+});
+
 const logger = winston.createLogger({
     levels: {
+        error: 0,
         success: 1,
-        error: 2,
-        info: 3
+        info: 2
     },
     format: winston.format.combine(
         winston.format.timestamp(),
@@ -32,7 +40,7 @@ const logger = winston.createLogger({
     ),
     transports: [
         new winston.transports.Console(),
-        new winston.transports.File({filename: "backup.log"})
+        rotateFileTransport
     ]
 })
 
