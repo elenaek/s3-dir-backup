@@ -39,30 +39,35 @@ const logger = winston.createLogger({
 
 
 // Put folder path into a zip file
-const archiveFile = (dir = "sometestfolder") => {
-    if(fs.existsSync(dir)){
-        logger.info(`Starting archival of: ${dir}`);
-        const outputFileStream = fs.createWriteStream(`${dir}.zip`);
-        const dirArchive = archiver('zip', {zlib: {level: 9}});
-        dirArchive.on("warning", (warning) => {
-            if(warning.code === "ENOENT") logger.warn(warning);
-            else {
+const archiveDir = (dirToBackup = "sometestfolder") => {
+    return new Promise((resolve, reject) => {
+        if(fs.existsSync(dirToBackup)){
+            logger.info(`Starting archival of: ${dirToBackup}`);
+            let archiveFilePath =  `${dirToBackup}.zip`;
+            let outputFileStream = fs.createWriteStream(archiveFilePath);
+            let dirArchive = archiver('zip', {zlib: {level: 9}});
+            outputFileStream.on("close", () => resolve())
+            dirArchive.on("warning", (warning) => {
+                if(warning.code === "ENOENT") logger.warn(warning);
+                else {
+                    logger.error(err);
+                    throw err;
+                }
+            });
+            dirArchive.on("error", (err) => {
                 logger.error(err);
                 throw err;
-            }
-        });
-        dirArchive.on("error", (err) => {
-            logger.error(err);
-            throw err;
-        });
-        dirArchive.directory(dir);
-        dirArchive.pipe(outputFileStream);
-        dirArchive.finalize();
-        logger.info(`${dir} has successfully been archived in ${dir}.zip`);
-    }
-    else{
-        logger.error(`The directory ${dir} doesn't exist!`);
-    }
+            });
+            dirArchive.directory(dirToBackup);
+            dirArchive.pipe(outputFileStream);
+            dirArchive.finalize();
+            logger.info(`${dirToBackup} has successfully been archived in ${dirToBackup}.zip`);
+        }
+        else{
+            logger.error(`The directory ${dirToBackup} doesn't exist!`);
+            reject();
+        }
+    });
 }
 
 //Get SSM parameter value with S3 bucket name
@@ -83,7 +88,7 @@ const getBackupBucketName = async (ssmPath="/mpart/backup_bucket_name") => {
 const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
     return new Promise(async (resolve, reject) => {
         if(bucketName, backupFilePath){
-            let fileStream = fs.readFileSync(backupFilePath);
+            let fileStream = fs.createReadStream(backupFilePath);
             let fileName = await formatBackupName(path.basename(backupFilePath));
             let uploadParams = {
                 Bucket: bucketName,
@@ -93,6 +98,7 @@ const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
             };
             
             s3.upload(uploadParams)
+            .on("httpUploadProgress", (event) => console.log(event))
             .send((err, data) => {
                 if(err){
                     return reject(err);
@@ -136,15 +142,43 @@ const getHash = (backupFilePath) => {
 }
 
 // Confirm that backup is on s3 bucket
+const confirmBackupUploaded = async (bucketName, bucketKey, backupFilePath) => {
+    if(bucketName && bucketKey && fs.existsSync(backupFilePath)){
+        let backupSizeInBytes = fs.statSync(backupFilePath).size;
+        let headParams = {
+            Bucket: bucketName,
+            Key: bucketKey
+        }
+        try{
+            let res = await s3.headObject(headParams).promise();
+            console.log(`${backupSizeInBytes} : ${res.ContentLength}`);
+            if(backupSizeInBytes === res.ContentLength) return true;
+            return false;
+        }catch(err){
+            return false;
+        }
+    }
+    else{
+        return false;
+    }
+}
 
+// Clean up files
+const cleanUpPostUpload = async (backupFilePath) => {
+    if(fs.existsSync(backupFilePath)) fs.unlinkSync(backupFilePath);
+}
 
 
 (async() => {
     // console.log(await getBackupBucketName());
     try{
         let bucketName = await getBackupBucketName();
-        console.log(await uploadFileToS3(bucketName));
+        await archiveDir("sometestfolder");
+        let { s3BucketKey } = await uploadFileToS3(bucketName);
         // console.log(await getHash("sometestfolder.zip"))
+
+        console.log(await confirmBackupUploaded(bucketName, s3BucketKey, "sometestfolder.zip"));
+        await cleanUpPostUpload("sometestfolder.zip");
 
         // console.log(formatBackupName("sometestfolder.zip"));
     }catch(err){
