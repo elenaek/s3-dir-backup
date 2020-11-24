@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const AWS = require('aws-sdk');
 const archiver = require('archiver');
@@ -80,12 +81,10 @@ const getBackupBucketName = async (ssmPath="/mpart/backup_bucket_name") => {
 
 // Upload dir archive file to S3
 const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
-    return new Promise((resolve, reject) => {
-        
+    return new Promise(async (resolve, reject) => {
         if(bucketName, backupFilePath){
             let fileStream = fs.readFileSync(backupFilePath);
-            let fileName = formatBackupName(path.basename(backupFilePath));
-            
+            let fileName = await formatBackupName(path.basename(backupFilePath));
             let uploadParams = {
                 Bucket: bucketName,
                 Key: fileName,
@@ -110,14 +109,30 @@ const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
 }
 
 // Format backup name with time and date
-const formatBackupName = (backupFilePath) => {
+const formatBackupName = async (backupFilePath) => {
     if(fs.existsSync(backupFilePath)){
         let fileName = path.basename(backupFilePath, ".zip");
-        return `${fileName}-${new Date().toISOString()}.zip`
+        return `${fileName}/${await getHash(backupFilePath)}-${new Date().toISOString()}.zip`
     }
     else{
         throw { message: `${backupFilePath} doesn't exist!`}
     }
+}
+
+// Get sha256 hash of backup file
+const getHash = (backupFilePath) => {
+    return new Promise((resolve, reject) => {
+        if(fs.existsSync(backupFilePath)){
+            let shaHash = crypto.createHash("sha256");
+            let fileStream = fs.createReadStream(backupFilePath);
+            fileStream.on("error", (err) => reject(err));
+            fileStream.on("data", (chunk) => shaHash.update(chunk));
+            fileStream.on("end", () => resolve(shaHash.digest("hex").toString()));
+        }
+        else{
+            reject({ message: `${backupFilePath} doesn't exist!`})
+        }
+    })
 }
 
 // Confirm that backup is on s3 bucket
@@ -129,6 +144,8 @@ const formatBackupName = (backupFilePath) => {
     try{
         let bucketName = await getBackupBucketName();
         console.log(await uploadFileToS3(bucketName));
+        // console.log(await getHash("sometestfolder.zip"))
+
         // console.log(formatBackupName("sometestfolder.zip"));
     }catch(err){
         console.log(err);
