@@ -35,7 +35,6 @@ const logger = winston.createLogger({
 // purge backups older than 7 days --x
 // monitor job status and confirm archive file exists in s3 and email a status message at the end of the script run
 // script must log to syslog or a dedicated logfile
-// must be published to a public repo for mparticle review
 
 
 // Put folder path into a zip file
@@ -85,7 +84,7 @@ const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
         
         if(bucketName, backupFilePath){
             let fileStream = fs.readFileSync(backupFilePath);
-            let fileName = path.basename(backupFilePath);
+            let fileName = formatBackupName(path.basename(backupFilePath));
             
             let uploadParams = {
                 Bucket: bucketName,
@@ -110,6 +109,17 @@ const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
     });
 }
 
+// Format backup name with time and date
+const formatBackupName = (backupFilePath) => {
+    if(fs.existsSync(backupFilePath)){
+        let fileName = path.basename(backupFilePath, ".zip");
+        return `${fileName}-${new Date().toISOString()}.zip`
+    }
+    else{
+        throw { message: `${backupFilePath} doesn't exist!`}
+    }
+}
+
 // Confirm that backup is on s3 bucket
 
 
@@ -119,6 +129,7 @@ const uploadFileToS3 = (bucketName, backupFilePath = "sometestfolder.zip") => {
     try{
         let bucketName = await getBackupBucketName();
         console.log(await uploadFileToS3(bucketName));
+        // console.log(formatBackupName("sometestfolder.zip"));
     }catch(err){
         console.log(err);
     }
