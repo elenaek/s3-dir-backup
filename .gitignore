@@ -1,3 +1,6 @@
 .terraform
 *.tfstate*
 node_modules
+backup-err.log
+backup.log
+*.zip

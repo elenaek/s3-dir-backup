@@ -1,3 +1,5 @@
 targetRegion="us-east-1"
+resourceGroupName="mpart-dir-backup"
+resourceGroupDescription="mParticle Take Home Assignment"
 backupBucketName="mpart-dir-backup"
 bucketNameSsmParamPath="/mpart/backup_bucket_name"
