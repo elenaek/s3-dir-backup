@@ -83,6 +83,15 @@ const setTemporarySmtpParameters = async () => {
     process.env.SMTP_RECEIVERS = process.env.SMTP_RECEIVERS ? process.env.SMTP_RECEIVERS : tempSmtpReceivers.split(",").map((receiver) => receiver.replace(/\s/gi,"")) || [];
 }
 
+const cleanUpExit = async () => {
+    let { srcBackupDir } = cli;
+    if(srcBackupDir){
+        let backupFilePath = `${srcBackupDir}.zip`;
+        await cleanUpPostUpload(backupFilePath);
+    }
+    process.exit();
+}
+
 cli
     .version("0.0.1")
     .description("CLI tool for mpth assignment. Backs up specified src directory to destination bucket everyday at midnight.")
@@ -165,37 +174,17 @@ if(!process.argv.slice(2).length){
 }
 
 process.on("exit", async () => {
-    let { srcBackupDir } = cli;
-    if(srcBackupDir){
-        let backupFilePath = `${srcBackupDir}.zip`;
-        await cleanUpPostUpload(backupFilePath);
-    }
-    process.exit();
+    await cleanUpExit();
 });
 
 process.on("SIGINT", async () => {
-    let { srcBackupDir } = cli;
-    if(srcBackupDir){
-        let backupFilePath = `${srcBackupDir}.zip`;
-        await cleanUpPostUpload(backupFilePath);
-    }
-    process.exit();
+    await cleanUpExit();
 });
 
 process.on("SIGTERM", async () => {
-    let { srcBackupDir } = cli;
-    if(srcBackupDir){
-        let backupFilePath = `${srcBackupDir}.zip`;
-        await cleanUpPostUpload(backupFilePath);
-    }
-    process.exit();
+    await cleanUpExit();
 });
 
 process.on("uncaughtException", async () => {
-    let { srcBackupDir } = cli;
-    if(srcBackupDir){
-        let backupFilePath = `${srcBackupDir}.zip`;
-        await cleanUpPostUpload(backupFilePath);
-    }
-    process.exit();
+    await cleanUpExit();
 });
