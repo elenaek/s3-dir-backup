@@ -1,6 +1,6 @@
 {
   "name": "s3-dir-backup",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -10,6 +10,13 @@
   "preferGlobal": true,
   "bin": "./index.js",
   "license": "ISC",
+  "keywords": [
+    "s3",
+    "backup",
+    "directory",
+    "aws",
+    "cron"
+  ],
   "dependencies": {
     "archiver": "^5.1.0",
     "aws-sdk": "^2.797.0",

@@ -22,6 +22,8 @@ const{
 } = require('./lib/mail');
 const { logger } = require('./lib/logging');
 
+const { VERSION } = require('./lib/constants');
+
 const backupDirectory = async (backupDir, bucketName, notify = false) => {
     try{
         await createS3Bucket(bucketName);
@@ -93,8 +95,8 @@ const cleanUpExit = async () => {
 }
 
 cli
-    .version("0.0.1")
-    .description("CLI tool for mpth assignment. Backs up specified src directory to destination bucket everyday at midnight.")
+    .version(VERSION)
+    .description("CLI tool that backs up specified src directory to destination bucket everyday at midnight.")
     .option("-s, --src-backup-dir <backupDir>", "Source directory to back up to S3 bucket (required)")
     .option("-d, --dest-s3-bucket-name <s3BucketName>", "Name of target S3 bucket to back up to. Will create if doesn't currently exist (required)")
     .option("-n, --notify", "Send SMTP notification on backup success and failures. Please set SMTP_USER, SMTP_PW, SMTP_RECEIVERS env vars or set the respective flags.")

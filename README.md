@@ -58,3 +58,7 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 ## S3 Bucket Expiration Policy
 * Objects 7 days and older are expired
 * Multipart uploads that have not completed are terminated in 1 day
+ 
+## Notes
+* If you are using a gmail account as the SMTP sender you must go to https://myaccount.google.com/security and allow less secure app access to allow s3-dir-backup to actually send emails using that account
+
