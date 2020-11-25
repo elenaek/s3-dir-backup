@@ -22,14 +22,6 @@ const{
 } = require('./lib/mail');
 const { logger } = require('./lib/logging');
 
-// daily backup of a fs directory to an existing s3 bucket --x
-// backup time and date must appear in the backup file name --x
-// backup script should run once per day automatically --x
-// purge backups older than 7 days --x
-// monitor job status and confirm archive file exists in s3 and email a status message at the end of the script run --x
-// script must log to syslog or a dedicated logfile --x
-// test to make sure directories are os agnostic, also try big files
-
 const backupDirectory = async (backupDir, bucketName, notify = false) => {
     try{
         await createS3Bucket(bucketName);
@@ -118,16 +110,16 @@ cli
             process.env.SMTP_RECEIVERS = smtpReceivers ? smtpReceivers : process.env.SMTP_RECEIVERS || "";
             let creationConfirmed = await bucketExists(destS3BucketName);
             if(!creationConfirmed){
-                creationConfirmed = await prompt([
+                let answers = await prompt([
                     {
                         type: "confirm",
                         name: "creationConfirmed",
                         message: `The S3 bucket (${destS3BucketName}) currently does not exist and will be created using your current user (${await getCurrentIamUser()})`,
                         default: false
                     }
-                ]).creationConfirmed;
+                ]);
+                creationConfirmed = answers.creationConfirmed;
             }
-            
             if(creationConfirmed){
                 if(notify && 
                     !process.env.SMTP_USER || 
