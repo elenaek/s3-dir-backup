@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const process = require('process');
+const path = require('path');
 
 const cli = require('commander');
 const { prompt } = require("inquirer");
@@ -9,7 +10,8 @@ const {
     getCurrentIamUser,
     confirmBackupUploadedToS3,
     createS3Bucket,
-    uploadFileToS3
+    uploadFileToS3,
+    bucketExists
 } = require('./lib/aws');
 const {
     archiveDir,
@@ -18,90 +20,139 @@ const {
 const{
     sendSMTPNotification
 } = require('./lib/mail');
+const { logger } = require('./lib/logging');
 
 // daily backup of a fs directory to an existing s3 bucket --x
 // backup time and date must appear in the backup file name --x
 // backup script should run once per day automatically --x
 // purge backups older than 7 days --x
-// monitor job status and confirm archive file exists in s3 and email a status message at the end of the script run
+// monitor job status and confirm archive file exists in s3 and email a status message at the end of the script run --x
 // script must log to syslog or a dedicated logfile --x
+// test to make sure directories are os agnostic, also try big files
 
-
-//main backup function
-const backupDirectory = async (backupDir, bucketName) => {
+const backupDirectory = async (backupDir, bucketName, notify = false) => {
     try{
         await createS3Bucket(bucketName);
         let backupFilePath = await archiveDir(backupDir);
         let { s3BucketKey } = await uploadFileToS3(bucketName);
         await confirmBackupUploadedToS3(bucketName, s3BucketKey, backupFilePath);
         await cleanUpPostUpload(backupFilePath);
-        await sendSMTPNotification(
-            process.env.SMTP_RECEIVERS, 
-            `[${new Date().toISOString()}]MPTH_Backup_Success_Notification`, 
-            `${backupDir} has been successfully backed up to the ${bucketName} S3 bucket!`
-        );
+        if(notify){
+            await sendSMTPNotification(
+                process.env.SMTP_RECEIVERS, 
+                `[${new Date().toISOString()}] MPTH_Backup_Success_Notification`, 
+                `${backupDir} has been successfully backed up to the ${bucketName} S3 bucket!`
+            );
+        }
     }catch(err){
-        console.log(err);
+        logger.error(JSON.stringify(err));
+        logger.error(`${backupDir} has failed to backup to ${bucketName}`);
+        if(notify){
+            await sendSMTPNotification(
+                process.env.SMTP_RECEIVERS, 
+                `[${new Date().toISOString()}] MPTH_Backup_Failure_Notification`, 
+                `${backupDir} has failed to back up to the ${bucketName} S3 bucket!`
+            );
+        }
     }
 }
 
+const generateSmtpPrompts = () => {
+    let prompts = [];
+    if(!process.env.SMTP_USER){
+        prompts.push({
+            type: "input",
+            name: "tempSmtpUser",
+            message: "SMTP User/Email address: "
+        }
+    )};
+    if(!process.env.SMTP_PW){ 
+        prompts.push({
+            type: "password",
+            name: "tempSmtpPassword",
+            message: "SMTP Password: "
+        }
+    )};
+    if(!process.env.SMTP_RECEIVERS){
+        prompts.push({
+            type: "input",
+            name: "tempSmtpReceivers",
+            message: "Comma separated list of email notification receivers [email1, email2, email3]: "
+        }
+    )};
+    return prompts;
+}
+
+const setTemporarySmtpParameters = async () => {
+    let { tempSmtpUser, tempSmtpPassword, tempSmtpReceivers } = await prompt(generateSmtpPrompts());
+    process.env.SMTP_USER = process.env.SMTP_USER ? process.env.SMTP_USER : tempSmtpUser;
+    process.env.SMTP_PW = process.env.SMTP_PW ? process.env.SMTP_PW : tempSmtpPassword;
+    process.env.SMTP_RECEIVERS = process.env.SMTP_RECEIVERS ? process.env.SMTP_RECEIVERS : tempSmtpReceivers.split(",").map((receiver) => receiver.replace(/\s/gi,"")) || [];
+}
 
 cli
     .version("0.0.1")
     .description("CLI tool for mpth assignment. Backs up specified src directory to destination bucket everyday at midnight.")
     .option("-s, --src-backup-dir <backupDir>", "Source directory to back up to S3 bucket (required)")
     .option("-d, --dest-s3-bucket-name <s3BucketName>", "Name of target S3 bucket to back up to. Will create if doesn't currently exist (required)")
+    .option("-n, --notify", "Send SMTP notification on backup success and failures. Please set SMTP_USER, SMTP_PW, SMTP_RECEIVERS env vars or set the respective flags.")
+    .option("-e, --smtp-user <smtpUser>", "SMTP user to use for sending notifications")
+    .option("-p, --smtp-password <smtpPassword>", "SMTP password to use for SMTP user")
+    .option("-r, --smtp-receivers <smtpReceivers>", "Comma separated list of email addresses to send notifcations to")
     .action(async () => {
-        let { destS3BucketName, srcBackupDir } = cli;
+        let { 
+            destS3BucketName, 
+            srcBackupDir,
+            smtpUser,
+            smtpPassword,
+            smtpReceivers,
+            notify
+        } = cli;
+
         if(srcBackupDir && destS3BucketName){
             destS3BucketName = destS3BucketName.toLowerCase();
-
-            let { confirmed } = await prompt([
-                {
-                    type: "confirm",
-                    name: "confirmed",
-                    message: `If the S3 bucket (${destS3BucketName}) doesn't exist it will be created using your current user (${await getCurrentIamUser()})`,
-                    default: false
-                }
-            ]);
-
-            if(!process.env.SMTP_USER || !process.env.SMTP_PW){
-                let { setSmtp } = await prompt([
+            srcBackupDir = path.normalize(srcBackupDir);
+            process.env.SMTP_USER = smtpUser? smtpUser : process.env.SMTP_USER || "";
+            process.env.SMTP_PW = smtpPassword ? smtpPassword : process.env.SMTP_PW || "";
+            process.env.SMTP_RECEIVERS = smtpReceivers ? smtpReceivers : process.env.SMTP_RECEIVERS || "";
+            let creationConfirmed = await bucketExists(destS3BucketName);
+            if(!creationConfirmed){
+                creationConfirmed = await prompt([
                     {
                         type: "confirm",
-                        name: "setSmtp",
-                        message: `Detected unset email env variables: "SMTP_USER", "SMTP_PW" and/or "SMTP_RECEIVERS". Would you like to set temporary values?`
+                        name: "creationConfirmed",
+                        message: `The S3 bucket (${destS3BucketName}) currently does not exist and will be created using your current user (${await getCurrentIamUser()})`,
+                        default: false
                     }
-                ]);
-                if(setSmtp){
-                    let { smtpUser, smtpPassword, smtpReceivers } = await prompt([
-                        {
-                            type: "input",
-                            name: "smtpUser",
-                            message: "SMTP User/Email address: "
-                        },
-                        {
-                            type: "password",
-                            name: "smtpPassword",
-                            message: "SMTP Password: "
-                        },
-                        {
-                            type: "input",
-                            name: "smtpReceivers",
-                            message: "Comma separated list of email notification receivers"
-                        }
-                    ]);
-                    process.env.SMTP_USER = smtpUser;
-                    process.env.SMTP_PW = smtpPassword;
-                    process.env.SMTP_RECEIVERS = smtpReceivers.split(",").map((receiver) => receiver.replace(/\s/gi,"")) || [];
-                    console.log(process.env.SMTP_RECEIVERS)
-                }
+                ]).creationConfirmed;
             }
             
-            if(confirmed){
-                await backupDirectory(srcBackupDir, destS3BucketName);
+            if(creationConfirmed){
+                if(notify && 
+                    !process.env.SMTP_USER || 
+                    !process.env.SMTP_PW ||
+                    !process.env.SMTP_RECEIVERS
+                ){
+                    console.log("prompt smtp")
+                    let { setSmtp } = await prompt([
+                        {
+                            type: "confirm",
+                            name: "setSmtp",
+                            message: `One or more detected unset email env variables: "SMTP_USER", "SMTP_PW" and/or "SMTP_RECEIVERS". Would you like to set temporary values?`
+                        }
+                    ]);
+                    if(setSmtp){
+                        await setTemporarySmtpParameters();
+                    }
+                    else{
+                        notify = false;
+                    }
+                }
+
+                await backupDirectory(srcBackupDir, destS3BucketName, notify);
                 schedule.scheduleJob("0 0 * * *", async () => {
-                    await backupDirectory(srcBackupDir, destS3BucketName);
+                    logger.info(`Backup schedule has begun and will backup the ${srcBackupDir} directory and its subdirectories to the ${destS3BucketName} bucket daily at midnight.`)
+                    await backupDirectory(srcBackupDir, destS3BucketName, notify);
                 });
             }
         }
