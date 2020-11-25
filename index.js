@@ -33,10 +33,9 @@ const { logger } = require('./lib/logging');
 const backupDirectory = async (backupDir, bucketName, notify = false) => {
     try{
         await createS3Bucket(bucketName);
-        let backupFilePath = await archiveDir(backupDir);
-        let { s3BucketKey } = await uploadFileToS3(bucketName);
-        await confirmBackupUploadedToS3(bucketName, s3BucketKey, backupFilePath);
-        await cleanUpPostUpload(backupFilePath);
+        var backupFilePath = await archiveDir(backupDir);
+        let { s3BucketKey, parts } = await uploadFileToS3(bucketName, backupFilePath);
+        await confirmBackupUploadedToS3(bucketName, s3BucketKey, backupFilePath, parts);
         if(notify){
             await sendSMTPNotification(
                 process.env.SMTP_RECEIVERS, 
@@ -51,9 +50,11 @@ const backupDirectory = async (backupDir, bucketName, notify = false) => {
             await sendSMTPNotification(
                 process.env.SMTP_RECEIVERS, 
                 `[${new Date().toISOString()}] MPTH_Backup_Failure_Notification`, 
-                `${backupDir} has failed to back up to the ${bucketName} S3 bucket!`
+                `${backupDir} has failed to back up to the ${bucketName} S3 bucket!\n${JSON.stringify(err)}`
             );
         }
+    }finally{
+        await cleanUpPostUpload(backupFilePath);
     }
 }
 
@@ -133,7 +134,6 @@ cli
                     !process.env.SMTP_PW ||
                     !process.env.SMTP_RECEIVERS
                 ){
-                    console.log("prompt smtp")
                     let { setSmtp } = await prompt([
                         {
                             type: "confirm",
@@ -171,3 +171,39 @@ if(!process.argv.slice(2).length){
     cli.outputHelp();
     return
 }
+
+process.on("exit", async () => {
+    let { srcBackupDir } = cli;
+    if(srcBackupDir){
+        let backupFilePath = `${srcBackupDir}.zip`;
+        await cleanUpPostUpload(backupFilePath);
+    }
+    process.exit();
+});
+
+process.on("SIGINT", async () => {
+    let { srcBackupDir } = cli;
+    if(srcBackupDir){
+        let backupFilePath = `${srcBackupDir}.zip`;
+        await cleanUpPostUpload(backupFilePath);
+    }
+    process.exit();
+});
+
+process.on("SIGTERM", async () => {
+    let { srcBackupDir } = cli;
+    if(srcBackupDir){
+        let backupFilePath = `${srcBackupDir}.zip`;
+        await cleanUpPostUpload(backupFilePath);
+    }
+    process.exit();
+});
+
+process.on("uncaughtException", async () => {
+    let { srcBackupDir } = cli;
+    if(srcBackupDir){
+        let backupFilePath = `${srcBackupDir}.zip`;
+        await cleanUpPostUpload(backupFilePath);
+    }
+    process.exit();
+});
