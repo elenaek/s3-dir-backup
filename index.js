@@ -123,7 +123,7 @@ cli
         if(srcBackupDir && destS3BucketName){
             destS3BucketName = destS3BucketName.toLowerCase();
             srcBackupDir = path.normalize(srcBackupDir);
-            process.env.SMTP_SECURE = secure || DEFAULT.SMTP_SECURE;;
+            process.env.SMTP_SECURE = secure === undefined && !smtpPort && !process.env.SMTP_PORT? DEFAULT.SMTP_SECURE : !!secure;
             process.env.SMTP_HOST = smtpHost? smtpHost : process.env.SMTP_HOST || DEFAULT.SMTP_HOST;
             process.env.SMTP_PORT = smtpPort? smtpPort : process.env.SMTP_PORT || DEFAULT.SMTP_PORT;
             process.env.SMTP_USER = smtpUser? smtpUser : process.env.SMTP_USER || "";
@@ -151,7 +151,7 @@ cli
                         {
                             type: "confirm",
                             name: "setSmtp",
-                            message: `${`Unset SMTP values!`.red}\n${`SMTP_HOST:`.yellow} ${`${process.env.SMTP_HOST.green || "UNSET".red}`}\n${`SMTP_PORT: `.yellow}${`${process.env.SMTP_PORT+"".green || "UNSET".red}`.green}\n${`SMTP_USER: `.yellow}${`${process.env.SMTP_USER? process.env.SMTP_USER.green : "UNSET".red}`.green}\n${`SMTP_PW: `.yellow}${`${process.env.SMTP_PW? "***".green : "UNSET".red}`}\n${`SMTP_RECEIVERS:`.yellow} ${`${process.env.SMTP_RECEIVERS? process.env.SMTP_RECEIVERS.green : "".red}`}\n ${`Would you like to set temporary values?`}`
+                            message: `${`Unset SMTP values!`.red}\n${`SMTP_HOST:`.yellow} ${`${process.env.SMTP_HOST.green || "UNSET".red}`}\n${`SMTP_PORT: `.yellow}${`${process.env.SMTP_PORT+"".green || "UNSET".red}`.green}\n${`SMTP_SECURE: `.yellow}${`${process.env.SMTP_SECURE}`.green}\n${`SMTP_USER: `.yellow}${`${process.env.SMTP_USER? process.env.SMTP_USER.green : "UNSET".red}`.green}\n${`SMTP_PW: `.yellow}${`${process.env.SMTP_PW? "***".green : "UNSET".red}`}\n${`SMTP_RECEIVERS:`.yellow} ${`${process.env.SMTP_RECEIVERS? process.env.SMTP_RECEIVERS.green : "".red}`}\n ${`Would you like to set temporary values?`}`
                         }
                     ]);
                     if(setSmtp){
