@@ -21,8 +21,9 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 * If the S3 bucket you specify doesn't exist you will be prompted to confirm if you want s3-dir-backup to create it for you
 
 ## SMTP Notifications
-`s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> --notify`
+`s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> --notify --secure`
 * The **--notify** flag enables SMTP notifications (smtp is default)
+* The **--secure** flag enables TLS usage. If you do not specify a custom **SMTP_HOST** and **SMTP_PORT** through env variables or inline then s3-dir-backup will use smtp.gmail.com:465 with secure enabled by default
 
 ## SMTP Parameters
 ---
