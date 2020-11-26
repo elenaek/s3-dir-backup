@@ -3,7 +3,7 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 
 ## Features
 * Uploads large backup files using multipart uploads
-* SMTP notifications (currently only gmail supported)
+* SMTP notifications (gmail SMTP is default)
 * OS agnostic
 * Logging and rotation
 
@@ -22,7 +22,7 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 
 ## SMTP Notifications
 `s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> --notify`
-* The **--notify** flag enables SMTP notifications (currently only gmail is supported)
+* The **--notify** flag enables SMTP notifications (smtp is default)
 
 ## SMTP Parameters
 ---
@@ -30,6 +30,8 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 * Set up your SMTP credentials using environment variables
     #### For Windows
     ```
+    setx SMTP_HOST smtp.somedomain.com
+    setx SMTP_PORT 465
     setx SMTP_USER notificationuser@gmail.com
     setx SMTP_PW notifcationuser@gmail password
     setx SMTP_RECEIVERS receiver1@email.com,receiver2@someotheremail.com
@@ -39,15 +41,19 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
     * Exports will not persist unless you put them in your `~/.bash_profile`, `~/.bashrc` or `/etc/environment`
     * Please make sure you understand the differences between the files referenced above before setting your credentials there
     ```
+    export SMTP_HOST="smtp.somedomain.com"
+    export SMTP_PORT="465"
     export SMTP_USER="notificationuser@gmail.com"
     export SMTP_PW="notifcationuser@gmail password"
     export SMTP_RECEIVERS="receiver1@email.com,receiver2@someotheremail.com"
     ```
 #### Set SMTP Parameters Inline (temporary)
-`s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> -e <smtpUser> -p <smtpPw> -r <commaSeparatedSmtpReceivers>`
-* **-e** sets your SMTP user/email account (gmail only supported currently)
-* **-p** sets your SMTP password
-* **-r** sets the receivers for notifcations separated by commas
+`s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> -su <smtpUser> -spw <smtpPw> -sr <commaSeparatedSmtpReceivers>`
+* **-sh** sets your SMTP host address (smtp.gmail.com is default)
+* **-sp** sets your SMTP port (465 is default)
+* **-su** sets your SMTP user/email account
+* **-spw** sets your SMTP password
+* **-sr** sets the receivers for notifcations separated by commas
 * SMTP parameters set inline do not persist between runs
 ---
 

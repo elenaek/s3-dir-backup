@@ -18,11 +18,12 @@ const {
     cleanUpPostUpload
 } = require('./lib/utils');
 const{
-    sendSMTPNotification
+    sendSMTPNotification,
+    validConfiguration
 } = require('./lib/mail');
 const { logger } = require('./lib/logging');
 
-const { VERSION } = require('./lib/constants');
+const { VERSION, DEFAULT } = require('./lib/constants');
 
 const backupDirectory = async (backupDir, bucketName, notify = false) => {
     try{
@@ -82,7 +83,7 @@ const setTemporarySmtpParameters = async () => {
     let { tempSmtpUser, tempSmtpPassword, tempSmtpReceivers } = await prompt(generateSmtpPrompts());
     process.env.SMTP_USER = process.env.SMTP_USER ? process.env.SMTP_USER : tempSmtpUser;
     process.env.SMTP_PW = process.env.SMTP_PW ? process.env.SMTP_PW : tempSmtpPassword;
-    process.env.SMTP_RECEIVERS = process.env.SMTP_RECEIVERS ? process.env.SMTP_RECEIVERS : tempSmtpReceivers.split(",").map((receiver) => receiver.replace(/\s/gi,"")) || [];
+    process.env.SMTP_RECEIVERS = process.env.SMTP_RECEIVERS ? process.env.SMTP_RECEIVERS : tempSmtpReceivers;
 }
 
 const cleanUpExit = async () => {
@@ -100,22 +101,31 @@ cli
     .option("-s, --src-backup-dir <backupDir>", "Source directory to back up to S3 bucket (required)")
     .option("-d, --dest-s3-bucket-name <s3BucketName>", "Name of target S3 bucket to back up to. Will create if doesn't currently exist (required)")
     .option("-n, --notify", "Send SMTP notification on backup success and failures. Please set SMTP_USER, SMTP_PW, SMTP_RECEIVERS env vars or set the respective flags.")
-    .option("-e, --smtp-user <smtpUser>", "SMTP user to use for sending notifications")
-    .option("-p, --smtp-password <smtpPassword>", "SMTP password to use for SMTP user")
-    .option("-r, --smtp-receivers <smtpReceivers>", "Comma separated list of email addresses to send notifcations to")
+    .option("-sec, --secure", "Use TLS when connecting to server. If false will try a later upgrade to TLS if the server supports STARTTLS")
+    .option("-sh, --smtp-host <smtpHost>", "SMTP host address to use")
+    .option("-sp, --smtp-port <smtpPort>", "SMTP port to use")
+    .option("-su, --smtp-user <smtpUser>", "SMTP user to use for sending notifications")
+    .option("-spw, --smtp-password <smtpPassword>", "SMTP password to use for SMTP user")
+    .option("-sr, --smtp-receivers <smtpReceivers>", "Comma separated list of email addresses to send notifcations to")
     .action(async () => {
         let { 
             destS3BucketName, 
             srcBackupDir,
+            smtpHost,
+            smtpPort,
             smtpUser,
             smtpPassword,
             smtpReceivers,
-            notify
+            notify,
+            secure
         } = cli;
 
         if(srcBackupDir && destS3BucketName){
             destS3BucketName = destS3BucketName.toLowerCase();
             srcBackupDir = path.normalize(srcBackupDir);
+            process.env.SMTP_SECURE = secure || DEFAULT.SMTP_SECURE;;
+            process.env.SMTP_HOST = smtpHost? smtpHost : process.env.SMTP_HOST || DEFAULT.SMTP_HOST;
+            process.env.SMTP_PORT = smtpPort? smtpPort : process.env.SMTP_PORT || DEFAULT.SMTP_PORT;
             process.env.SMTP_USER = smtpUser? smtpUser : process.env.SMTP_USER || "";
             process.env.SMTP_PW = smtpPassword ? smtpPassword : process.env.SMTP_PW || "";
             process.env.SMTP_RECEIVERS = smtpReceivers ? smtpReceivers : process.env.SMTP_RECEIVERS || "";
@@ -132,16 +142,16 @@ cli
                 creationConfirmed = answers.creationConfirmed;
             }
             if(creationConfirmed){
-                if(notify && 
+                if(notify && (
                     !process.env.SMTP_USER || 
                     !process.env.SMTP_PW ||
                     !process.env.SMTP_RECEIVERS
-                ){
+                )){
                     let { setSmtp } = await prompt([
                         {
                             type: "confirm",
                             name: "setSmtp",
-                            message: `One or more detected unset email env variables: "SMTP_USER", "SMTP_PW" and/or "SMTP_RECEIVERS". Would you like to set temporary values?`
+                            message: `${`Unset SMTP values!`.red}\n${`SMTP_HOST:`.yellow} ${`${process.env.SMTP_HOST.green || "UNSET".red}`}\n${`SMTP_PORT: `.yellow}${`${process.env.SMTP_PORT+"".green || "UNSET".red}`.green}\n${`SMTP_USER: `.yellow}${`${process.env.SMTP_USER? process.env.SMTP_USER.green : "UNSET".red}`.green}\n${`SMTP_PW: `.yellow}${`${process.env.SMTP_PW? "***".green : "UNSET".red}`}\n${`SMTP_RECEIVERS:`.yellow} ${`${process.env.SMTP_RECEIVERS? process.env.SMTP_RECEIVERS.green : "".red}`}\n ${`Would you like to set temporary values?`}`
                         }
                     ]);
                     if(setSmtp){
@@ -149,7 +159,16 @@ cli
                     }
                     else{
                         notify = false;
+                        console.log("SMTP Notifications disabled.".bold.red)
                     }
+                }
+
+                if(notify){
+                    if(!await validConfiguration()){
+                        console.log("Invalid SMTP configuration!".bold.red);
+                        process.exit();
+                    }
+                    else{ console.log("SMTP successfully authenticated!".bold.green) }
                 }
 
                 await backupDirectory(srcBackupDir, destS3BucketName, notify);
