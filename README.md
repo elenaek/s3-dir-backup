@@ -9,7 +9,14 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 
 ## Prerequisites
 * Node.js
-* AWS credentials with (S3: CreateBucket, PutLifecycleConfiguration, ListBuckets) permissions
+* AWS credentials with permissions:
+    ```
+    S3: GetObject
+    S3: PutObject
+    S3: CreateBucket
+    S3: PutLifecycleConfiguration
+    S3: ListBuckets
+    ```
 * R/W permissions for the directory you want to backup
 
 ## Getting Started
