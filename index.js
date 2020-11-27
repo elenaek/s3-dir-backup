@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const process = require('process');
 const path = require('path');
+const fs = require('fs');
 
 const cli = require('commander');
 const { prompt } = require("inquirer");
@@ -12,6 +13,7 @@ const {
     confirmBackupUploadedToS3,
     createS3Bucket,
     uploadFileToS3,
+    isValidBucketName,
     bucketExists
 } = require('./lib/aws');
 const {
@@ -51,6 +53,35 @@ const backupDirectory = async (backupDir, bucketName, notify = false) => {
         }
     }finally{
         await cleanUpPostUpload(backupFilePath);
+    }
+}
+
+const validateInputParameters = (inputParameters) => {
+    let {
+        destS3BucketName,
+        srcBackupDir,
+        backupSchedule
+    } = inputParameters;
+
+    if(!isValidBucketName(destS3BucketName)){
+        console.log(`${destS3BucketName} is an invalid bucket name!`.bold.red);
+        console.log(`S3 Bucket Names must follow the format:
+        - Bucket names must be at least 3 and no more than 63 characters long.
+        - Bucket names must be a series of one or more labels.
+        - Bucket names can contain lowercase letters, numbers, and hyphens.
+        - Each label must start and end with a lowercase letter or a number.
+        - Adjacent labels are separated by a single period (.)
+        - Bucket names must not be formatted as an IP address (for example, 192.168.5.4)
+        `)
+        process.exit();
+    }
+    if(!fs.existsSync(srcBackupDir)){
+        console.log(`The directory: ${srcBackupDir} does not exist!`.bold.red);
+        process.exit();
+    }
+    if(backupSchedule && !isValidCron(backupSchedule)){
+        console.log(`"${backupSchedule}" is not a valid cron expression!`.bold.red);
+        process.exit();
     }
 }
 
@@ -124,18 +155,14 @@ cli
         } = cli;
 
         if(srcBackupDir && destS3BucketName){
-            destS3BucketName = destS3BucketName.toLowerCase();
             srcBackupDir = path.normalize(srcBackupDir);
+            validateInputParameters({...cli, srcBackupDir});
             process.env.SMTP_SECURE = secure === undefined && !smtpPort && !process.env.SMTP_PORT? DEFAULT.SMTP_SECURE : !!secure;
             process.env.SMTP_HOST = smtpHost? smtpHost : process.env.SMTP_HOST || DEFAULT.SMTP_HOST;
             process.env.SMTP_PORT = smtpPort? smtpPort : process.env.SMTP_PORT || DEFAULT.SMTP_PORT;
             process.env.SMTP_USER = smtpUser? smtpUser : process.env.SMTP_USER || "";
             process.env.SMTP_PW = smtpPassword ? smtpPassword : process.env.SMTP_PW || "";
             process.env.SMTP_RECEIVERS = smtpReceivers ? smtpReceivers : process.env.SMTP_RECEIVERS || "";
-            if(backupSchedule && !isValidCron(backupSchedule)){
-                console.log(`"${backupSchedule}" is not a valid cron expression!`);
-                process.exit();
-            }
             backupSchedule = backupSchedule || DEFAULT.BACKUP_SCHEDULE;
 
             let creationConfirmed = await bucketExists(destS3BucketName);
@@ -144,7 +171,7 @@ cli
                     {
                         type: "confirm",
                         name: "creationConfirmed",
-                        message: `The S3 bucket (${destS3BucketName}) currently does not exist and will be created using your current user (${await getCurrentIamUser()})`,
+                        message: `The S3 bucket "${destS3BucketName}" currently does not exist and will be created using your current user "${await getCurrentIamUser()}"`,
                         default: false
                     }
                 ]);
