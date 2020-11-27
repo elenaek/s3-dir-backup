@@ -1,10 +1,11 @@
 # Overview
-s3-dir-backup is a shell tool for backing up a source directory to a destination S3 bucket daily at midnight.
+s3-dir-backup is a shell tool for backing up a source directory to a destination S3 bucket.
 
 ## Features
 * Uploads large backup files using multipart uploads
 * SMTP notifications (gmail SMTP is default)
 * OS agnostic
+* Backup scheduling (default is daily at midnight)
 * Logging and rotation
 
 ## Prerequisites
@@ -26,6 +27,11 @@ s3-dir-backup is a shell tool for backing up a source directory to a destination
 * **sourceDirectory** is the directory you want to back up
 * **destinationBucketName** is the name of the S3 bucket you want to back up to.
 * If the S3 bucket you specify doesn't exist you will be prompted to confirm if you want s3-dir-backup to create it for you
+
+## Backup Scheduling
+`s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> --backup-schedule <cronExpression>`
+* The **--backup-schedule** or **-c** flag allows you to input a cron expression to use as the backup schedule
+* If a custom backup schedule is not set s3-dir-backup will back up daily at midnight
 
 ## SMTP Notifications
 `s3-dir-backup -s <sourceDirectory> -d <destinationBucketName> --notify --secure`

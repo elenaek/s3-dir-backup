@@ -5,6 +5,7 @@ const path = require('path');
 const cli = require('commander');
 const { prompt } = require("inquirer");
 const schedule = require('node-schedule');
+const { isValidCron } = require('cron-validator');
 
 const { 
     getCurrentIamUser,
@@ -107,6 +108,7 @@ cli
     .option("-su, --smtp-user <smtpUser>", "SMTP user to use for sending notifications")
     .option("-spw, --smtp-password <smtpPassword>", "SMTP password to use for SMTP user")
     .option("-sr, --smtp-receivers <smtpReceivers>", "Comma separated list of email addresses to send notifcations to")
+    .option("-c, --backup-schedule <cronExpression>", "cron expression specifying schedule to backup")
     .action(async () => {
         let { 
             destS3BucketName, 
@@ -117,7 +119,8 @@ cli
             smtpPassword,
             smtpReceivers,
             notify,
-            secure
+            secure,
+            backupSchedule
         } = cli;
 
         if(srcBackupDir && destS3BucketName){
@@ -129,6 +132,12 @@ cli
             process.env.SMTP_USER = smtpUser? smtpUser : process.env.SMTP_USER || "";
             process.env.SMTP_PW = smtpPassword ? smtpPassword : process.env.SMTP_PW || "";
             process.env.SMTP_RECEIVERS = smtpReceivers ? smtpReceivers : process.env.SMTP_RECEIVERS || "";
+            if(backupSchedule && !isValidCron(backupSchedule)){
+                console.log(`"${backupSchedule}" is not a valid cron expression!`);
+                process.exit();
+            }
+            backupSchedule = backupSchedule || DEFAULT.BACKUP_SCHEDULE;
+
             let creationConfirmed = await bucketExists(destS3BucketName);
             if(!creationConfirmed){
                 let answers = await prompt([
@@ -172,8 +181,8 @@ cli
                 }
 
                 await backupDirectory(srcBackupDir, destS3BucketName, notify);
-                schedule.scheduleJob("0 0 * * *", async () => {
-                    logger.info(`Backup schedule has begun and will backup the ${srcBackupDir} directory and its subdirectories to the ${destS3BucketName} bucket daily at midnight.`)
+                logger.info(`Backup schedule has begun and will backup the ${srcBackupDir} directory and its subdirectories to the ${destS3BucketName} bucket with the following schedule. Cron Schedule: ${backupSchedule}`);
+                schedule.scheduleJob(backupSchedule, async () => {
                     await backupDirectory(srcBackupDir, destS3BucketName, notify);
                 });
             }
